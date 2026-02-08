@@ -1,0 +1,154 @@
+.chatroom {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+.chatroom--loading,
+.chatroom--error {
+  align-items: center;
+  justify-content: center;
+}
+
+.chatroom__loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  font-size: 48px;
+}
+
+.chatroom__loader p {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.chatroom__error-content {
+  text-align: center;
+}
+
+.chatroom__error-content h2 {
+  font-size: 48px;
+  margin: 0;
+}
+
+.chatroom__error-content p {
+  color: var(--text-secondary);
+  margin: 16px 0 24px;
+}
+
+.chatroom__error-content button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent-primary);
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* Header */
+.chatroom__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chatroom__header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chatroom__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.chatroom__title-icon {
+  font-size: 24px;
+}
+
+.chatroom__status {
+  font-size: 12px;
+  color: #22c55e;
+}
+
+.chatroom__header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chatroom__share {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.chatroom__share:hover {
+  background: var(--bg-tertiary);
+}
+
+.chatroom__leave {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #ef4444;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.chatroom__leave:hover {
+  background: #dc2626;
+}
+
+/* Body */
+.chatroom__body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.chatroom__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .chatroom__header {
+    padding: 10px 12px;
+  }
+
+  .chatroom__title {
+    font-size: 16px;
+  }
+
+  .chatroom__share span:first-child {
+    display: none;
+  }
+}

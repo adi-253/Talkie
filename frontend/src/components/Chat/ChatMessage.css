@@ -1,0 +1,128 @@
+.message {
+  display: flex;
+  gap: 12px;
+  padding: 4px 16px;
+  align-items: flex-start;
+}
+
+.message--own {
+  flex-direction: row-reverse;
+}
+
+.message--grouped {
+  padding-left: 60px;
+}
+
+.message--own.message--grouped {
+  padding-right: 60px;
+  padding-left: 16px;
+}
+
+.message__content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 70%;
+}
+
+.message--own .message__content-wrapper {
+  align-items: flex-end;
+}
+
+.message__username {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+
+.message__bubble {
+  background: var(--bg-secondary);
+  padding: 10px 14px;
+  border-radius: 18px;
+  border-top-left-radius: 4px;
+  position: relative;
+}
+
+.message--own .message__bubble {
+  background: var(--accent-primary);
+  color: white;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 4px;
+}
+
+.message__text {
+  margin: 0;
+  word-wrap: break-word;
+  line-height: 1.4;
+}
+
+.message__time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+  display: block;
+}
+
+.message--own .message__time {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Mentions */
+.message__mention {
+  background: var(--accent-secondary);
+  color: var(--accent-primary);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.message__mention--self {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Reply Preview */
+.message__reply-preview {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent-primary);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.message__reply-author {
+  font-weight: 600;
+  color: var(--accent-primary);
+  font-size: 12px;
+}
+
+.message__reply-text {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Reply Button */
+.message__reply-btn {
+  opacity: 0;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: opacity 0.2s, color 0.2s;
+}
+
+.message:hover .message__reply-btn {
+  opacity: 1;
+}
+
+.message__reply-btn:hover {
+  color: var(--accent-primary);
+}

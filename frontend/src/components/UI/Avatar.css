@@ -1,0 +1,62 @@
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 600;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatar--sm {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+.avatar--md {
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+}
+
+.avatar--lg {
+  width: 56px;
+  height: 56px;
+  font-size: 24px;
+}
+
+.avatar__online-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  background: #22c55e;
+  border: 2px solid var(--bg-primary);
+  border-radius: 50%;
+}
+
+/* Avatar Picker Styles */
+.avatar-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.avatar-picker__option {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.avatar-picker__option:hover {
+  transform: scale(1.1);
+}
+
+.avatar-picker__option--selected {
+  border-color: var(--text-primary);
+}

@@ -1,0 +1,213 @@
+package supabase
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/adi-253/Talkie/backend/internal/config"
+	"github.com/adi-253/Talkie/backend/internal/models"
+)
+
+// Client is a wrapper around the Supabase REST API.
+// It uses the service role key for backend operations with elevated privileges.
+type Client struct {
+	baseURL    string
+	apiKey     string
+	httpClient *http.Client
+}
+
+// NewClient creates a new Supabase client with the given configuration.
+func NewClient(cfg *config.Config) *Client {
+	return &Client{
+		baseURL: cfg.SupabaseURL,
+		apiKey:  cfg.SupabaseKey,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+}
+
+// doRequest executes an HTTP request to the Supabase REST API.
+// It automatically adds authentication headers and handles the response.
+func (c *Client) doRequest(method, endpoint string, body interface{}) ([]byte, error) {
+	var reqBody io.Reader
+	if body != nil {
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		reqBody = bytes.NewBuffer(jsonBody)
+	}
+
+	url := fmt.Sprintf("%s/rest/v1/%s", c.baseURL, endpoint)
+	req, err := http.NewRequest(method, url, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add Supabase authentication headers
+	req.Header.Set("apikey", c.apiKey)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Prefer", "return=representation")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("supabase error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
+}
+
+// CreateRoom inserts a new room into the database.
+func (c *Client) CreateRoom(room *models.Room) error {
+	_, err := c.doRequest("POST", "rooms", room)
+	return err
+}
+
+// GetRoom retrieves a room by its ID.
+func (c *Client) GetRoom(id string) (*models.Room, error) {
+	endpoint := fmt.Sprintf("rooms?id=eq.%s&select=*", id)
+	respBody, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var rooms []models.Room
+	if err := json.Unmarshal(respBody, &rooms); err != nil {
+		return nil, fmt.Errorf("failed to parse room: %w", err)
+	}
+
+	if len(rooms) == 0 {
+		return nil, fmt.Errorf("room not found")
+	}
+
+	return &rooms[0], nil
+}
+
+// ListRooms retrieves all active rooms.
+func (c *Client) ListRooms() ([]models.Room, error) {
+	respBody, err := c.doRequest("GET", "rooms?select=*&order=created_at.desc", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var rooms []models.Room
+	if err := json.Unmarshal(respBody, &rooms); err != nil {
+		return nil, fmt.Errorf("failed to parse rooms: %w", err)
+	}
+
+	return rooms, nil
+}
+
+// UpdateRoomActivity updates the last_active_at timestamp for a room.
+func (c *Client) UpdateRoomActivity(roomID string) error {
+	data := map[string]interface{}{
+		"last_active_at": time.Now().UTC(),
+	}
+	endpoint := fmt.Sprintf("rooms?id=eq.%s", roomID)
+	_, err := c.doRequest("PATCH", endpoint, data)
+	return err
+}
+
+// DeleteRoom removes a room from the database.
+// This will cascade delete all participants due to the foreign key constraint.
+func (c *Client) DeleteRoom(id string) error {
+	endpoint := fmt.Sprintf("rooms?id=eq.%s", id)
+	_, err := c.doRequest("DELETE", endpoint, nil)
+	return err
+}
+
+// AddParticipant inserts a new participant into a room.
+func (c *Client) AddParticipant(participant *models.Participant) error {
+	_, err := c.doRequest("POST", "participants", participant)
+	return err
+}
+
+// GetParticipants retrieves all participants in a room.
+func (c *Client) GetParticipants(roomID string) ([]models.Participant, error) {
+	endpoint := fmt.Sprintf("participants?room_id=eq.%s&select=*", roomID)
+	respBody, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var participants []models.Participant
+	if err := json.Unmarshal(respBody, &participants); err != nil {
+		return nil, fmt.Errorf("failed to parse participants: %w", err)
+	}
+
+	return participants, nil
+}
+
+// RemoveParticipant deletes a participant from the database.
+func (c *Client) RemoveParticipant(participantID string) error {
+	endpoint := fmt.Sprintf("participants?id=eq.%s", participantID)
+	_, err := c.doRequest("DELETE", endpoint, nil)
+	return err
+}
+
+// CountParticipants returns the number of participants in a room.
+func (c *Client) CountParticipants(roomID string) (int, error) {
+	participants, err := c.GetParticipants(roomID)
+	if err != nil {
+		return 0, err
+	}
+	return len(participants), nil
+}
+
+// GetInactiveRooms returns rooms that haven't been active since the given threshold.
+func (c *Client) GetInactiveRooms(threshold time.Time) ([]models.Room, error) {
+	endpoint := fmt.Sprintf("rooms?last_active_at=lt.%s&select=*", threshold.Format(time.RFC3339))
+	respBody, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var rooms []models.Room
+	if err := json.Unmarshal(respBody, &rooms); err != nil {
+		return nil, fmt.Errorf("failed to parse rooms: %w", err)
+	}
+
+	return rooms, nil
+}
+
+// UpdateParticipantActivity updates the last_active_at timestamp for a participant.
+func (c *Client) UpdateParticipantActivity(participantID string) error {
+	data := map[string]interface{}{
+		"last_active_at": time.Now().UTC(),
+	}
+	endpoint := fmt.Sprintf("participants?id=eq.%s", participantID)
+	_, err := c.doRequest("PATCH", endpoint, data)
+	return err
+}
+
+// GetInactiveParticipants returns participants that haven't been active since the given threshold.
+func (c *Client) GetInactiveParticipants(threshold time.Time) ([]models.Participant, error) {
+	endpoint := fmt.Sprintf("participants?last_active_at=lt.%s&select=*", threshold.Format(time.RFC3339))
+	respBody, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var participants []models.Participant
+	if err := json.Unmarshal(respBody, &participants); err != nil {
+		return nil, fmt.Errorf("failed to parse participants: %w", err)
+	}
+
+	return participants, nil
+}

@@ -1,0 +1,167 @@
+/* Simple Black & White Theme */
+.home {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  padding: 40px 20px;
+}
+
+.home__header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.home__title {
+  font-size: 36px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  letter-spacing: -1px;
+}
+
+.home__subtitle {
+  font-size: 14px;
+  color: #888;
+  margin: 0;
+}
+
+.home__content {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.home__create-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.home__name-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.home__name-input:focus {
+  border-color: #666;
+}
+
+.home__name-input::placeholder {
+  color: #555;
+}
+
+.home__create-btn {
+  width: 100%;
+  padding: 16px;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.home__create-btn:hover:not(:disabled) {
+  background: #fff;
+  color: #000;
+}
+
+.home__create-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.home__error {
+  color: #ff4444;
+  text-align: center;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.home__rooms {
+  margin-top: 48px;
+}
+
+.home__section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #666;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
+
+.home__loading,
+.home__empty {
+  color: #666;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+.home__room-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.home__room-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.home__room-item:hover {
+  border-color: #555;
+}
+
+.home__room-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home__room-name {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.home__room-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: #666;
+}
+
+.home__join-btn {
+  width: 100%;
+  padding: 10px 20px;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  background: transparent;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.home__join-btn:hover {
+  background: #fff;
+  color: #000;
+}
