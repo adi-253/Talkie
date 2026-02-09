@@ -12,7 +12,6 @@ import (
 	"github.com/adi-253/Talkie/backend/internal/handlers"
 	"github.com/adi-253/Talkie/backend/internal/services"
 	"github.com/adi-253/Talkie/backend/internal/supabase"
-	"github.com/adi-253/Talkie/backend/internal/websocket"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -36,15 +35,11 @@ func main() {
 	// Start background cleanup worker
 	go cleanupService.Start()
 
-	// Initialize message service (needed by both HTTP handlers and WebSocket hub)
+	// Initialize message service for HTTP message endpoints
 	messageService := services.NewMessageService()
 
-	// Initialize WebSocket hub with message service for persistence
-	wsHub := websocket.NewHub(messageService)
-	go wsHub.Run()
-	wsHandler := websocket.NewHandler(wsHub)
-
 	// Initialize handlers
+	// Note: Real-time messaging is now handled by Supabase Realtime on the frontend
 	roomHandler := handlers.NewRoomHandler(roomService)
 	messageHandler := handlers.NewMessageHandler(messageService)
 
@@ -74,8 +69,7 @@ func main() {
 	// Health check endpoint
 	r.Get("/health", handlers.HealthCheck)
 
-	// WebSocket endpoint for real-time messaging
-	r.Get("/ws/{id}", wsHandler.ServeWS)
+	// Note: Real-time messaging (/ws) is now handled by Supabase Realtime on the frontend
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {

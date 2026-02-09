@@ -1,28 +1,21 @@
 /**
  * useRealtime Hook
  * 
- * Manages WebSocket connection to Go backend for real-time messaging.
+ * Manages Supabase Realtime Broadcast connection for real-time messaging.
  * Handles message broadcasting, typing indicators, and participant updates.
  * 
- * Uses native WebSocket for reliable connections instead of Supabase Realtime.
+ * Uses Supabase Realtime Broadcast for reliable pub/sub communication.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { API_URL } from '../utils/supabase';
-
-// Convert HTTP URL to WebSocket URL
-const getWsUrl = () => {
-  const httpUrl = API_URL || 'http://localhost:8080';
-  return httpUrl.replace(/^http/, 'ws');
-};
+import { supabase } from '../utils/supabase';
 
 export function useRealtime(roomId, participantId, onMessage, onTyping, onParticipantUpdate) {
   const [isConnected, setIsConnected] = useState(false);
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
+  const channelRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   
-  // Store callbacks in refs to avoid recreating WebSocket on callback changes
+  // Store callbacks in refs to avoid recreating channel on callback changes
   const onMessageRef = useRef(onMessage);
   const onTypingRef = useRef(onTyping);
   const onParticipantUpdateRef = useRef(onParticipantUpdate);
@@ -36,160 +29,142 @@ export function useRealtime(roomId, participantId, onMessage, onTyping, onPartic
     participantIdRef.current = participantId;
   }, [onMessage, onTyping, onParticipantUpdate, participantId]);
 
-  // Set up WebSocket connection
+  // Set up Supabase Realtime Broadcast channel
   useEffect(() => {
     if (!roomId || !participantId) return;
 
-    const connectWebSocket = () => {
-      const wsUrl = `${getWsUrl()}/ws/${roomId}?participant_id=${encodeURIComponent(participantId)}`;
-      console.log(`[WebSocket] Connecting to: ${wsUrl}`);
-      
-      const ws = new WebSocket(wsUrl);
+    console.log(`[Supabase Realtime] Subscribing to room: ${roomId}`);
+    
+    // Create a Broadcast channel for this room
+    // Using 'self: true' so the sender also receives their own messages for consistency
+    const channel = supabase.channel(`room:${roomId}`, {
+      config: {
+        broadcast: { self: true }
+      }
+    });
 
-      ws.onopen = () => {
-        console.log('[WebSocket] ✓ Connected');
+    // Listen for chat messages
+    channel.on('broadcast', { event: 'message' }, ({ payload }) => {
+      console.log('[Supabase Realtime] Received message:', payload.id?.slice(0, 8));
+      if (onMessageRef.current) {
+        onMessageRef.current(payload);
+      }
+    });
+
+    // Listen for typing indicators
+    channel.on('broadcast', { event: 'typing' }, ({ payload }) => {
+      // Ignore our own typing events
+      if (payload.participant_id !== participantIdRef.current && onTypingRef.current) {
+        console.log('[Supabase Realtime] Received typing:', payload.username, payload.is_typing);
+        onTypingRef.current(payload);
+      }
+    });
+
+    // Listen for participant updates (join/leave)
+    channel.on('broadcast', { event: 'participant' }, ({ payload }) => {
+      console.log('[Supabase Realtime] Received participant update:', payload.action);
+      if (onParticipantUpdateRef.current) {
+        onParticipantUpdateRef.current(payload);
+      }
+    });
+
+    // Subscribe to the channel
+    channel.subscribe((status) => {
+      console.log('[Supabase Realtime] Subscription status:', status);
+      if (status === 'SUBSCRIBED') {
         setIsConnected(true);
-        
-        // Clear any pending reconnect
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[WebSocket] Received:', data.type);
-
-          switch (data.type) {
-            case 'message':
-              if (onMessageRef.current) {
-                onMessageRef.current(data.payload);
-              }
-              break;
-            case 'typing':
-              if (onTypingRef.current && data.payload.participant_id !== participantIdRef.current) {
-                onTypingRef.current(data.payload);
-              }
-              break;
-            case 'participant_update':
-              if (onParticipantUpdateRef.current) {
-                onParticipantUpdateRef.current(data.payload);
-              }
-              break;
-            default:
-              console.warn('[WebSocket] Unknown message type:', data.type);
-          }
-        } catch (err) {
-          console.error('[WebSocket] Failed to parse message:', err);
-        }
-      };
-
-      ws.onclose = (event) => {
-        console.log('[WebSocket] Disconnected:', event.code, event.reason);
+        console.log('[Supabase Realtime] ✓ Connected to room:', roomId);
+      } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
         setIsConnected(false);
-        wsRef.current = null;
+        console.log('[Supabase Realtime] Disconnected from room:', roomId);
+      }
+    });
 
-        // Auto-reconnect after 2 seconds (unless it was a clean close)
-        if (event.code !== 1000) {
-          console.log('[WebSocket] Reconnecting in 2 seconds...');
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('[WebSocket] Error:', error);
-      };
-
-      wsRef.current = ws;
-    };
-
-    connectWebSocket();
+    channelRef.current = channel;
 
     // Cleanup on unmount or roomId/participantId change
     return () => {
-      console.log('[WebSocket] Cleaning up connection');
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+      console.log('[Supabase Realtime] Cleaning up channel for room:', roomId);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
-      if (wsRef.current) {
-        wsRef.current.close(1000, 'Component unmounted');
-        wsRef.current = null;
-      }
+      setIsConnected(false);
     };
   }, [roomId, participantId]);
 
-  // Send a message through WebSocket
+  // Send a message through Supabase Broadcast
   const sendMessage = useCallback(async (encryptedContent, metadata) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.warn('[WebSocket] Cannot send message - not connected');
+    if (!channelRef.current) {
+      console.warn('[Supabase Realtime] Cannot send message - no channel');
       return;
     }
 
-    const message = {
-      type: 'message',
-      payload: {
-        id: metadata?.id || crypto.randomUUID(),
-        participant_id: participantIdRef.current,
-        content: encryptedContent,
-        timestamp: new Date().toISOString(),
-        ...metadata
-      }
+    const payload = {
+      id: metadata?.id || crypto.randomUUID(),
+      participant_id: participantIdRef.current,
+      content: encryptedContent,
+      timestamp: new Date().toISOString(),
+      ...metadata
     };
 
-    wsRef.current.send(JSON.stringify(message));
-    console.log('[WebSocket] Message sent');
+    const result = await channelRef.current.send({
+      type: 'broadcast',
+      event: 'message',
+      payload
+    });
+
+    console.log('[Supabase Realtime] Message sent:', result);
   }, []);
 
   // Send typing indicator
   const sendTyping = useCallback(async (username) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!channelRef.current) return;
 
     // Clear previous timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    const message = {
-      type: 'typing',
+    // Send typing start
+    await channelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
       payload: {
         participant_id: participantIdRef.current,
         username: username,
         is_typing: true
       }
-    };
-
-    wsRef.current.send(JSON.stringify(message));
+    });
 
     // Auto-clear typing after 3 seconds
-    typingTimeoutRef.current = setTimeout(() => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'typing',
+    typingTimeoutRef.current = setTimeout(async () => {
+      if (channelRef.current) {
+        await channelRef.current.send({
+          type: 'broadcast',
+          event: 'typing',
           payload: {
             participant_id: participantIdRef.current,
             username: username,
             is_typing: false
           }
-        }));
+        });
       }
     }, 3000);
   }, []);
 
   // Send participant update
   const sendParticipantUpdate = useCallback(async (action, participant) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!channelRef.current) return;
 
-    const message = {
-      type: 'participant_update',
+    await channelRef.current.send({
+      type: 'broadcast',
+      event: 'participant',
       payload: {
         action, // 'join' or 'leave'
         participant
       }
-    };
-
-    wsRef.current.send(JSON.stringify(message));
+    });
   }, []);
 
   return {

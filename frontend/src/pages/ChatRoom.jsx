@@ -209,13 +209,27 @@ export function ChatRoom() {
         reply_to: replyContext
       }]);
 
-      // Broadcast encrypted message via Supabase Realtime
+      // Broadcast encrypted message via Supabase Realtime (for live users)
       await realtimeSendMessage(encryptedContent, {
         id: messageId,
         username,
         avatar,
         reply_to: replyContext
       });
+
+      // Also persist to backend API (for message history on new joins)
+      try {
+        await api.sendMessage(roomId, {
+          participant_id: participantId,
+          content: encryptedContent,
+          username,
+          avatar,
+          reply_to: replyContext
+        });
+      } catch (err) {
+        console.warn('Failed to persist message to API:', err);
+        // Don't fail the whole send if persistence fails
+      }
       
       setReplyingTo(null);
     } catch (err) {
