@@ -2,10 +2,10 @@
  * ChatRoom Page
  * 
  * The main chat interface where users send and receive messages.
- * Uses HTTP polling for message sync. Always asks for name/avatar when joining.
+ * Uses Supabase Realtime for instant message sync via WebSocket.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MessageList } from '../components/Chat/MessageList';
@@ -14,12 +14,11 @@ import { ParticipantList } from '../components/Room/ParticipantList';
 import { JoinRoom } from '../components/Room/JoinRoom';
 import { ThemeToggle } from '../components/UI/ThemeToggle';
 import { useRoom } from '../hooks/useRoom';
+import { useRealtime } from '../hooks/useRealtime';
 import { useEncryption } from '../hooks/useEncryption';
 import { api } from '../utils/supabase';
 import { setActiveRoom, clearActiveRoom } from './Home';
 import './ChatRoom.css';
-
-const POLLING_INTERVAL = 2000; // Poll every 2 seconds
 
 export function ChatRoom() {
   const { roomId } = useParams();
@@ -47,9 +46,62 @@ export function ChatRoom() {
   const [username, setUsername] = useState('');
   const [avatar, setAvatar] = useState('');
   
-  // Track last message timestamp for polling
-  const lastMessageTimeRef = useRef(null);
-  const seenMessageIdsRef = useRef(new Set());
+  // Track seen message IDs to prevent duplicates
+  const [seenMessageIds] = useState(() => new Set());
+
+  // Handle incoming message from Supabase Realtime
+  const handleIncomingMessage = useCallback(async (payload) => {
+    // Skip if we've already seen this message
+    if (seenMessageIds.has(payload.id)) return;
+    seenMessageIds.add(payload.id);
+
+    try {
+      // Decrypt the message content
+      const decryptedContent = await decrypt(payload.content);
+      
+      setMessages(prev => [...prev, {
+        id: payload.id,
+        participant_id: payload.participant_id,
+        content: decryptedContent,
+        timestamp: payload.timestamp,
+        username: payload.username,
+        avatar: payload.avatar,
+        reply_to: payload.reply_to
+      }]);
+    } catch (err) {
+      console.error('Failed to decrypt message:', err);
+    }
+  }, [decrypt, seenMessageIds]);
+
+  // Handle typing indicator
+  const handleTyping = useCallback((payload) => {
+    if (payload.is_typing) {
+      setTypingUsers(prev => {
+        if (prev.some(u => u.participant_id === payload.participant_id)) return prev;
+        return [...prev, { participant_id: payload.participant_id, username: payload.username }];
+      });
+      // Auto-remove after 3 seconds
+      setTimeout(() => {
+        setTypingUsers(prev => prev.filter(u => u.participant_id !== payload.participant_id));
+      }, 3000);
+    } else {
+      setTypingUsers(prev => prev.filter(u => u.participant_id !== payload.participant_id));
+    }
+  }, []);
+
+  // Handle participant update
+  const handleParticipantUpdate = useCallback((payload) => {
+    console.log('[ChatRoom] Participant update:', payload);
+    // Room hook handles participant updates via its own polling/state
+  }, []);
+
+  // Connect to Supabase Realtime
+  const {
+    isConnected,
+    sendMessage: realtimeSendMessage,
+    sendTyping,
+    sendParticipantUpdate
+  } = useRealtime(roomId, participantId, handleIncomingMessage, handleTyping, handleParticipantUpdate);
 
   // Restore username/avatar when participant is auto-restored from localStorage
   useEffect(() => {
@@ -68,54 +120,41 @@ export function ChatRoom() {
     }
   }, [participantId, username, roomId]);
 
+  // Fetch existing messages when joining a room
+  useEffect(() => {
+    if (!roomId || !participantId) return;
+
+    const fetchExistingMessages = async () => {
+      try {
+        const { messages: existingMessages } = await api.getMessages(roomId);
+        if (existingMessages && existingMessages.length > 0) {
+          // Decrypt and add messages, avoiding duplicates
+          for (const msg of existingMessages) {
+            if (!seenMessageIds.has(msg.id)) {
+              seenMessageIds.add(msg.id);
+              const decryptedContent = await decrypt(msg.content);
+              setMessages(prev => [...prev, {
+                ...msg,
+                content: decryptedContent
+              }]);
+            }
+          }
+          console.log(`[ChatRoom] Loaded ${existingMessages.length} existing messages`);
+        }
+      } catch (err) {
+        console.error('Failed to fetch existing messages:', err);
+      }
+    };
+
+    fetchExistingMessages();
+  }, [roomId, participantId, decrypt, seenMessageIds]);
+
   // Clear active room on error
   useEffect(() => {
     if (error) {
       clearActiveRoom();
     }
   }, [error]);
-
-  // Poll for new messages
-  useEffect(() => {
-    if (!roomId || !participantId) return;
-
-    const pollMessages = async () => {
-      try {
-        const response = await api.getMessages(roomId, lastMessageTimeRef.current);
-        const newMessages = response.messages || [];
-        
-        if (newMessages.length > 0) {
-          for (const msg of newMessages) {
-            // Skip already displayed messages (dedup by ID only)
-            if (seenMessageIdsRef.current.has(msg.id)) continue;
-            seenMessageIdsRef.current.add(msg.id);
-            
-            try {
-              const decryptedContent = await decrypt(msg.content);
-              setMessages(prev => [...prev, {
-                ...msg,
-                content: decryptedContent
-              }]);
-            } catch (err) {
-              console.error('Failed to decrypt message:', err);
-            }
-          }
-          
-          const lastMsg = newMessages[newMessages.length - 1];
-          if (lastMsg?.timestamp) {
-            lastMessageTimeRef.current = lastMsg.timestamp;
-          }
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-    };
-
-    const interval = setInterval(pollMessages, POLLING_INTERVAL);
-    pollMessages();
-
-    return () => clearInterval(interval);
-  }, [roomId, participantId, decrypt]);
 
   // Handle joining room (always asks for name/avatar)
   const handleJoin = async (newUsername, newAvatar) => {
@@ -125,6 +164,12 @@ export function ChatRoom() {
       setUsername(newUsername);
       setAvatar(newAvatar);
       setActiveRoom(roomId);
+      
+      // Broadcast that we joined
+      sendParticipantUpdate('join', {
+        username: newUsername,
+        avatar: newAvatar
+      });
     } catch (err) {
       console.error('Failed to join:', err);
     } finally {
@@ -132,39 +177,45 @@ export function ChatRoom() {
     }
   };
 
-  // Handle sending a message via HTTP API
+  // Handle sending a message via Supabase Realtime
   const handleSend = async (content, replyTo) => {
     if (!participantId) return;
 
     try {
+      // Encrypt the message content
       const encryptedContent = await encrypt(content);
       
-      const messageData = {
-        participant_id: participantId,
-        content: encryptedContent,
-        username,
-        avatar
-      };
+      const messageId = crypto.randomUUID();
+      const timestamp = new Date().toISOString();
 
+      // Build reply context if replying
+      let replyContext = null;
       if (replyTo) {
-        messageData.reply_to = {
+        replyContext = {
           username: replyTo.username,
           content: replyTo.content.substring(0, 100)
         };
       }
 
-      const savedMsg = await api.sendMessage(roomId, messageData);
-      seenMessageIdsRef.current.add(savedMsg.id);
-
+      // Add message to local state immediately (optimistic update)
+      seenMessageIds.add(messageId);
       setMessages(prev => [...prev, {
-        id: savedMsg.id,
+        id: messageId,
         participant_id: participantId,
-        content,
-        timestamp: savedMsg.timestamp,
+        content, // Store decrypted for local display
+        timestamp,
         username,
         avatar,
-        reply_to: messageData.reply_to
+        reply_to: replyContext
       }]);
+
+      // Broadcast encrypted message via Supabase Realtime
+      await realtimeSendMessage(encryptedContent, {
+        id: messageId,
+        username,
+        avatar,
+        reply_to: replyContext
+      });
       
       setReplyingTo(null);
     } catch (err) {
@@ -172,9 +223,17 @@ export function ChatRoom() {
     }
   };
 
+  // Handle typing indicator
+  const handleTypingInput = () => {
+    if (username) {
+      sendTyping(username);
+    }
+  };
+
   // Handle leaving
   const handleLeave = async () => {
     clearActiveRoom();
+    sendParticipantUpdate('leave', { username, avatar });
     await leaveRoom();
     navigate('/');
   };
@@ -228,7 +287,9 @@ export function ChatRoom() {
             <span className="chatroom__title-icon">💬</span>
             {room?.name || 'Talkie'}
           </h1>
-          <span className="chatroom__status">● Syncing</span>
+          <span className={`chatroom__status ${isConnected ? 'chatroom__status--connected' : ''}`}>
+            {isConnected ? '● Connected' : '○ Connecting...'}
+          </span>
         </div>
 
         <div className="chatroom__header-right">
@@ -253,7 +314,7 @@ export function ChatRoom() {
           />
           <MessageInput
             onSend={handleSend}
-            onTyping={() => {}}
+            onTyping={handleTypingInput}
             replyingTo={replyingTo}
             onCancelReply={() => setReplyingTo(null)}
           />

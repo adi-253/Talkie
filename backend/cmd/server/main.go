@@ -12,6 +12,7 @@ import (
 	"github.com/adi-253/Talkie/backend/internal/handlers"
 	"github.com/adi-253/Talkie/backend/internal/services"
 	"github.com/adi-253/Talkie/backend/internal/supabase"
+	"github.com/adi-253/Talkie/backend/internal/websocket"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -35,9 +36,16 @@ func main() {
 	// Start background cleanup worker
 	go cleanupService.Start()
 
+	// Initialize message service (needed by both HTTP handlers and WebSocket hub)
+	messageService := services.NewMessageService()
+
+	// Initialize WebSocket hub with message service for persistence
+	wsHub := websocket.NewHub(messageService)
+	go wsHub.Run()
+	wsHandler := websocket.NewHandler(wsHub)
+
 	// Initialize handlers
 	roomHandler := handlers.NewRoomHandler(roomService)
-	messageService := services.NewMessageService()
 	messageHandler := handlers.NewMessageHandler(messageService)
 
 	// Set up router with middleware
@@ -66,6 +74,9 @@ func main() {
 	// Health check endpoint
 	r.Get("/health", handlers.HealthCheck)
 
+	// WebSocket endpoint for real-time messaging
+	r.Get("/ws/{id}", wsHandler.ServeWS)
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/rooms", func(r chi.Router) {
@@ -75,7 +86,7 @@ func main() {
 			r.Post("/{id}/join", roomHandler.JoinRoom)
 			r.Post("/{id}/leave", roomHandler.LeaveRoom)
 			r.Post("/{id}/heartbeat", roomHandler.Heartbeat)
-			// Message endpoints for polling fallback
+			// Message endpoints (kept as fallback)
 			r.Get("/{id}/messages", messageHandler.GetMessages)
 			r.Post("/{id}/messages", messageHandler.SendMessage)
 		})
@@ -92,7 +103,7 @@ func getCorsOrigins() []string {
 	originsEnv := os.Getenv("CORS_ORIGINS")
 	if originsEnv == "" {
 		// Default to localhost for development
-		return []string{"http://localhost:5173", "http://localhost:3000"}
+		return []string{"http://localhost:5173", "http://localhost:5174", "http://localhost:3000"}
 	}
 	
 	// Split comma-separated origins and trim whitespace
