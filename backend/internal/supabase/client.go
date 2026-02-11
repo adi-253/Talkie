@@ -154,6 +154,26 @@ func (c *Client) GetParticipants(roomID string) ([]models.Participant, error) {
 	return participants, nil
 }
 
+// GetParticipant retrieves a single participant by ID.
+func (c *Client) GetParticipant(participantID string) (*models.Participant, error) {
+	endpoint := fmt.Sprintf("participants?id=eq.%s&select=*", participantID)
+	respBody, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var participants []models.Participant
+	if err := json.Unmarshal(respBody, &participants); err != nil {
+		return nil, fmt.Errorf("failed to parse participant: %w", err)
+	}
+
+	if len(participants) == 0 {
+		return nil, fmt.Errorf("participant not found: %s", participantID)
+	}
+
+	return &participants[0], nil
+}
+
 // RemoveParticipant deletes a participant from the database.
 func (c *Client) RemoveParticipant(participantID string) error {
 	endpoint := fmt.Sprintf("participants?id=eq.%s", participantID)
@@ -196,17 +216,17 @@ func (c *Client) UpdateParticipantActivity(participantID string) error {
 	return err
 }
 
-// BroadcastParticipantLeave sends a Supabase Realtime Broadcast event to notify
-// connected clients that a participant has been removed (e.g., by the cleanup service).
+// BroadcastParticipantEvent sends a Supabase Realtime Broadcast event to notify
+// connected clients about a participant joining or leaving.
 // This uses the Supabase Realtime REST API so no WebSocket connection is needed.
-func (c *Client) BroadcastParticipantLeave(roomID string, participant *models.Participant) error {
+func (c *Client) BroadcastParticipantEvent(roomID string, action string, participant *models.Participant) error {
 	payload := map[string]interface{}{
 		"messages": []map[string]interface{}{
 			{
 				"topic": fmt.Sprintf("room:%s", roomID),
 				"event": "participant",
 				"payload": map[string]interface{}{
-					"action": "leave",
+					"action": action,
 					"participant": map[string]interface{}{
 						"id":       participant.ID,
 						"room_id":  participant.RoomID,

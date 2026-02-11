@@ -87,7 +87,7 @@ func (s *CleanupService) cleanupParticipants(threshold time.Time) {
 		} else {
 			log.Printf("Removed inactive participant: %s (%s)", p.ID, p.Username)
 			// Broadcast the leave event so other clients update instantly
-			if err := s.db.BroadcastParticipantLeave(p.RoomID, &p); err != nil {
+			if err := s.db.BroadcastParticipantEvent(p.RoomID, "leave", &p); err != nil {
 				log.Printf("Failed to broadcast participant leave for %s: %v", p.ID, err)
 			}
 			roomsToCheck[p.RoomID] = true

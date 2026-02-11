@@ -164,12 +164,7 @@ export function ChatRoom() {
       setUsername(newUsername);
       setAvatar(newAvatar);
       setActiveRoom(roomId);
-      
-      // Broadcast that we joined
-      sendParticipantUpdate('join', {
-        username: newUsername,
-        avatar: newAvatar
-      });
+      // Backend broadcasts the join event after adding to DB
     } catch (err) {
       console.error('Failed to join:', err);
     } finally {
@@ -247,7 +242,7 @@ export function ChatRoom() {
   // Handle leaving
   const handleLeave = async () => {
     clearActiveRoom();
-    sendParticipantUpdate('leave', { username, avatar });
+    // Backend broadcasts the leave event after removing from DB
     await leaveRoom();
     navigate('/');
   };

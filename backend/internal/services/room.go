@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/adi-253/Talkie/backend/internal/models"
@@ -103,6 +104,11 @@ func (s *RoomService) JoinRoom(roomID, username, avatar string) (*models.Partici
 		return nil, nil, nil, fmt.Errorf("failed to join room: %w", err)
 	}
 
+	// Broadcast join event so other clients update instantly
+	if err := s.db.BroadcastParticipantEvent(roomID, "join", participant); err != nil {
+		log.Printf("Failed to broadcast participant join for %s: %v", participant.ID, err)
+	}
+
 	// Update room activity
 	if err := s.db.UpdateRoomActivity(roomID); err != nil {
 		// Non-fatal error, log but continue
@@ -121,9 +127,22 @@ func (s *RoomService) JoinRoom(roomID, username, avatar string) (*models.Partici
 // LeaveRoom removes a participant from a room.
 // If this was the last participant, the room is automatically deleted.
 func (s *RoomService) LeaveRoom(roomID, participantID string) error {
+	// Fetch participant info before removing (needed for broadcast)
+	participant, err := s.db.GetParticipant(participantID)
+	if err != nil {
+		log.Printf("Could not fetch participant %s for broadcast: %v", participantID, err)
+	}
+
 	// Remove the participant
 	if err := s.db.RemoveParticipant(participantID); err != nil {
 		return fmt.Errorf("failed to leave room: %w", err)
+	}
+
+	// Broadcast leave event so other clients update instantly
+	if participant != nil {
+		if err := s.db.BroadcastParticipantEvent(roomID, "leave", participant); err != nil {
+			log.Printf("Failed to broadcast participant leave for %s: %v", participantID, err)
+		}
 	}
 
 	// Check if room is now empty
