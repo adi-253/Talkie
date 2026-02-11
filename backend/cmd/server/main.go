@@ -35,9 +35,12 @@ func main() {
 	// Start background cleanup worker
 	go cleanupService.Start()
 
-	// Initialize handlers
-	roomHandler := handlers.NewRoomHandler(roomService)
+	// Initialize message service for HTTP message endpoints
 	messageService := services.NewMessageService()
+
+	// Initialize handlers
+	// Note: Real-time messaging is now handled by Supabase Realtime on the frontend
+	roomHandler := handlers.NewRoomHandler(roomService)
 	messageHandler := handlers.NewMessageHandler(messageService)
 
 	// Set up router with middleware
@@ -66,6 +69,8 @@ func main() {
 	// Health check endpoint
 	r.Get("/health", handlers.HealthCheck)
 
+	// Note: Real-time messaging (/ws) is now handled by Supabase Realtime on the frontend
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/rooms", func(r chi.Router) {
@@ -75,7 +80,7 @@ func main() {
 			r.Post("/{id}/join", roomHandler.JoinRoom)
 			r.Post("/{id}/leave", roomHandler.LeaveRoom)
 			r.Post("/{id}/heartbeat", roomHandler.Heartbeat)
-			// Message endpoints for polling fallback
+			// Message endpoints (kept as fallback)
 			r.Get("/{id}/messages", messageHandler.GetMessages)
 			r.Post("/{id}/messages", messageHandler.SendMessage)
 		})
@@ -92,7 +97,7 @@ func getCorsOrigins() []string {
 	originsEnv := os.Getenv("CORS_ORIGINS")
 	if originsEnv == "" {
 		// Default to localhost for development
-		return []string{"http://localhost:5173", "http://localhost:3000"}
+		return []string{"http://localhost:5173", "http://localhost:5174", "http://localhost:3000"}
 	}
 	
 	// Split comma-separated origins and trim whitespace

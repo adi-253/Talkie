@@ -1,10 +1,10 @@
 /**
  * useRealtime Hook
  * 
- * Manages Supabase Realtime subscriptions for a chat room.
+ * Manages Supabase Realtime Broadcast connection for real-time messaging.
  * Handles message broadcasting, typing indicators, and participant updates.
  * 
- * IMPORTANT: Uses refs for callbacks to prevent channel recreation on re-renders.
+ * Uses Supabase Realtime Broadcast for reliable pub/sub communication.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -29,21 +29,23 @@ export function useRealtime(roomId, participantId, onMessage, onTyping, onPartic
     participantIdRef.current = participantId;
   }, [onMessage, onTyping, onParticipantUpdate, participantId]);
 
-  // Set up realtime channel - only recreate when roomId changes
+  // Set up Supabase Realtime Broadcast channel
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !participantId) return;
 
-    const channelName = `room:${roomId}`;
-    console.log(`[Realtime] Creating channel: ${channelName}`);
+    console.log(`[Supabase Realtime] Subscribing to room: ${roomId}`);
     
-    const channel = supabase.channel(channelName, {
+    // Create a Broadcast channel for this room
+    // Using 'self: true' so the sender also receives their own messages for consistency
+    const channel = supabase.channel(`room:${roomId}`, {
       config: {
-        broadcast: { self: false } // Don't receive our own broadcasts
+        broadcast: { self: true }
       }
     });
 
-    // Listen for new messages
+    // Listen for chat messages
     channel.on('broadcast', { event: 'message' }, ({ payload }) => {
+      console.log('[Supabase Realtime] Received message:', payload.id?.slice(0, 8));
       if (onMessageRef.current) {
         onMessageRef.current(payload);
       }
@@ -51,89 +53,71 @@ export function useRealtime(roomId, participantId, onMessage, onTyping, onPartic
 
     // Listen for typing indicators
     channel.on('broadcast', { event: 'typing' }, ({ payload }) => {
-      if (onTypingRef.current && payload.participant_id !== participantIdRef.current) {
+      // Ignore our own typing events
+      if (payload.participant_id !== participantIdRef.current && onTypingRef.current) {
+        console.log('[Supabase Realtime] Received typing:', payload.username, payload.is_typing);
         onTypingRef.current(payload);
       }
     });
 
     // Listen for participant updates (join/leave)
-    channel.on('broadcast', { event: 'participant_update' }, ({ payload }) => {
+    channel.on('broadcast', { event: 'participant' }, ({ payload }) => {
+      console.log('[Supabase Realtime] Received participant update:', payload.action);
       if (onParticipantUpdateRef.current) {
         onParticipantUpdateRef.current(payload);
       }
     });
 
-    // Subscribe and track connection status with detailed logging
-    channel.subscribe((status, err) => {
-      console.log(`[Realtime] Channel ${channelName} status:`, status);
-      
-      if (err) {
-        console.error('[Realtime] Subscription error:', err);
-      }
-      
-      switch (status) {
-        case 'SUBSCRIBED':
-          console.log('[Realtime] ✓ Successfully connected to channel');
-          setIsConnected(true);
-          break;
-        case 'CHANNEL_ERROR':
-          console.error('[Realtime] ✗ Channel error - check Supabase Realtime settings');
-          setIsConnected(false);
-          break;
-        case 'TIMED_OUT':
-          console.error('[Realtime] ✗ Connection timed out');
-          setIsConnected(false);
-          break;
-        case 'CLOSED':
-          console.log('[Realtime] Channel closed');
-          setIsConnected(false);
-          break;
-        default:
-          setIsConnected(false);
+    // Subscribe to the channel
+    channel.subscribe((status) => {
+      console.log('[Supabase Realtime] Subscription status:', status);
+      if (status === 'SUBSCRIBED') {
+        setIsConnected(true);
+        console.log('[Supabase Realtime] ✓ Connected to room:', roomId);
+      } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+        setIsConnected(false);
+        console.log('[Supabase Realtime] Disconnected from room:', roomId);
       }
     });
 
     channelRef.current = channel;
 
-    // Cleanup on unmount or roomId change
+    // Cleanup on unmount or roomId/participantId change
     return () => {
-      console.log(`[Realtime] Cleaning up channel: ${channelName}`);
+      console.log('[Supabase Realtime] Cleaning up channel for room:', roomId);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
+      setIsConnected(false);
     };
-  }, [roomId]); // Only depend on roomId!
+  }, [roomId, participantId]);
 
-  // Broadcast an encrypted message
+  // Send a message through Supabase Broadcast
   const sendMessage = useCallback(async (encryptedContent, metadata) => {
     if (!channelRef.current) {
-      console.warn('[Realtime] Cannot send message - channel not created');
+      console.warn('[Supabase Realtime] Cannot send message - no channel');
       return;
     }
 
-    // Wait a moment for WebSocket to be ready if not connected
-    if (!isConnected) {
-      console.log('[Realtime] Channel not yet subscribed, waiting...');
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
+    const payload = {
+      id: metadata?.id || crypto.randomUUID(),
+      participant_id: participantIdRef.current,
+      content: encryptedContent,
+      timestamp: new Date().toISOString(),
+      ...metadata
+    };
 
     const result = await channelRef.current.send({
       type: 'broadcast',
       event: 'message',
-      payload: {
-        id: crypto.randomUUID(),
-        participant_id: participantIdRef.current,
-        content: encryptedContent,
-        timestamp: new Date().toISOString(),
-        ...metadata
-      }
+      payload
     });
-    
-    console.log('[Realtime] Message sent, result:', result);
-  }, [isConnected]);
 
-  // Broadcast typing indicator
+    console.log('[Supabase Realtime] Message sent:', result);
+  }, []);
+
+  // Send typing indicator
   const sendTyping = useCallback(async (username) => {
     if (!channelRef.current) return;
 
@@ -142,6 +126,7 @@ export function useRealtime(roomId, participantId, onMessage, onTyping, onPartic
       clearTimeout(typingTimeoutRef.current);
     }
 
+    // Send typing start
     await channelRef.current.send({
       type: 'broadcast',
       event: 'typing',
@@ -153,9 +138,9 @@ export function useRealtime(roomId, participantId, onMessage, onTyping, onPartic
     });
 
     // Auto-clear typing after 3 seconds
-    typingTimeoutRef.current = setTimeout(() => {
+    typingTimeoutRef.current = setTimeout(async () => {
       if (channelRef.current) {
-        channelRef.current.send({
+        await channelRef.current.send({
           type: 'broadcast',
           event: 'typing',
           payload: {
@@ -168,13 +153,13 @@ export function useRealtime(roomId, participantId, onMessage, onTyping, onPartic
     }, 3000);
   }, []);
 
-  // Broadcast participant update
+  // Send participant update
   const sendParticipantUpdate = useCallback(async (action, participant) => {
     if (!channelRef.current) return;
 
     await channelRef.current.send({
       type: 'broadcast',
-      event: 'participant_update',
+      event: 'participant',
       payload: {
         action, // 'join' or 'leave'
         participant
