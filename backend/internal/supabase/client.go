@@ -196,6 +196,57 @@ func (c *Client) UpdateParticipantActivity(participantID string) error {
 	return err
 }
 
+// BroadcastParticipantLeave sends a Supabase Realtime Broadcast event to notify
+// connected clients that a participant has been removed (e.g., by the cleanup service).
+// This uses the Supabase Realtime REST API so no WebSocket connection is needed.
+func (c *Client) BroadcastParticipantLeave(roomID string, participant *models.Participant) error {
+	payload := map[string]interface{}{
+		"messages": []map[string]interface{}{
+			{
+				"topic": fmt.Sprintf("room:%s", roomID),
+				"event": "participant",
+				"payload": map[string]interface{}{
+					"action": "leave",
+					"participant": map[string]interface{}{
+						"id":       participant.ID,
+						"room_id":  participant.RoomID,
+						"username": participant.Username,
+						"avatar":   participant.Avatar,
+					},
+				},
+			},
+		},
+	}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal broadcast payload: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/realtime/v1/api/broadcast", c.baseURL)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create broadcast request: %w", err)
+	}
+
+	req.Header.Set("apikey", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("broadcast request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("broadcast error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 // GetInactiveParticipants returns participants that haven't been active since the given threshold.
 func (c *Client) GetInactiveParticipants(threshold time.Time) ([]models.Participant, error) {
 	endpoint := fmt.Sprintf("participants?last_active_at=lt.%s&select=*", threshold.Format(time.RFC3339))
