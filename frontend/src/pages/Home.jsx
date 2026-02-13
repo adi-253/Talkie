@@ -5,39 +5,20 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../utils/supabase';
+import { api, supabase } from '../utils/supabase';
 import './Home.css';
 
 const ACTIVE_ROOM_KEY = 'talkie_active_room';
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes in ms
 
-// Helper to get active room with timestamp check
+// Helper to get active room — server verification is the source of truth
 export const getActiveRoom = () => {
-  const stored = localStorage.getItem(ACTIVE_ROOM_KEY);
-  if (!stored) return null;
-  
-  try {
-    const { roomId, timestamp } = JSON.parse(stored);
-    // Check if within 5-minute window
-    if (Date.now() - timestamp < INACTIVITY_TIMEOUT) {
-      return roomId;
-    }
-    // Expired - clear it
-    localStorage.removeItem(ACTIVE_ROOM_KEY);
-    return null;
-  } catch {
-    localStorage.removeItem(ACTIVE_ROOM_KEY);
-    return null;
-  }
+  return localStorage.getItem(ACTIVE_ROOM_KEY);
 };
 
-// Set active room with timestamp
+// Set active room
 export const setActiveRoom = (roomId) => {
   if (roomId) {
-    localStorage.setItem(ACTIVE_ROOM_KEY, JSON.stringify({
-      roomId,
-      timestamp: Date.now()
-    }));
+    localStorage.setItem(ACTIVE_ROOM_KEY, roomId);
   } else {
     localStorage.removeItem(ACTIVE_ROOM_KEY);
   }
@@ -81,6 +62,49 @@ export function Home() {
 
     checkActiveRoom();
   }, [navigate]);
+
+  // Subscribe to real-time room creation/deletion events
+  useEffect(() => {
+    let cancelled = false;
+    let channel = null;
+
+    const setupChannel = () => {
+      channel = supabase.channel('rooms:lobby', {
+        config: {
+          broadcast: { self: false }
+        }
+      });
+
+      channel.on('broadcast', { event: 'room' }, ({ payload }) => {
+        if (cancelled) return;
+        console.log('[Lobby] Room event:', payload.action, payload.room?.id);
+        if (payload.action === 'created' && payload.room) {
+          setRooms(prev => {
+            // Avoid duplicates
+            if (prev.some(r => r.id === payload.room.id)) return prev;
+            return [payload.room, ...prev];
+          });
+        } else if (payload.action === 'deleted' && payload.room) {
+          setRooms(prev => prev.filter(r => r.id !== payload.room.id));
+        }
+      });
+
+      channel.subscribe((status) => {
+        console.log('[Lobby] Subscription status:', status);
+      });
+    };
+
+    // Small delay to handle React StrictMode double-mount cleanup race
+    const timer = setTimeout(setupChannel, 100);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, []);
 
   const fetchRooms = async () => {
     try {

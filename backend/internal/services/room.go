@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/adi-253/Talkie/backend/internal/models"
@@ -56,6 +57,11 @@ func (s *RoomService) CreateRoom(name string) (*models.Room, error) {
 		return nil, fmt.Errorf("failed to create room: %w", err)
 	}
 
+	// Broadcast room creation so the lobby updates in real-time
+	if err := s.db.BroadcastRoomEvent("created", room); err != nil {
+		log.Printf("Failed to broadcast room created for %s: %v", room.ID, err)
+	}
+
 	return room, nil
 }
 
@@ -103,10 +109,15 @@ func (s *RoomService) JoinRoom(roomID, username, avatar string) (*models.Partici
 		return nil, nil, nil, fmt.Errorf("failed to join room: %w", err)
 	}
 
+	// Broadcast join event so other clients update instantly
+	if err := s.db.BroadcastParticipantEvent(roomID, "join", participant); err != nil {
+		log.Printf("Failed to broadcast participant join for %s: %v", participant.ID, err)
+	}
+
 	// Update room activity
 	if err := s.db.UpdateRoomActivity(roomID); err != nil {
 		// Non-fatal error, log but continue
-		fmt.Printf("Warning: failed to update room activity: %v\n", err)
+		log.Printf("[Room] Warning: failed to update room activity for %s: %v", roomID, err)
 	}
 
 	// Get updated participant list
@@ -121,9 +132,22 @@ func (s *RoomService) JoinRoom(roomID, username, avatar string) (*models.Partici
 // LeaveRoom removes a participant from a room.
 // If this was the last participant, the room is automatically deleted.
 func (s *RoomService) LeaveRoom(roomID, participantID string) error {
+	// Fetch participant info before removing (needed for broadcast)
+	participant, err := s.db.GetParticipant(participantID)
+	if err != nil {
+		log.Printf("Could not fetch participant %s for broadcast: %v", participantID, err)
+	}
+
 	// Remove the participant
 	if err := s.db.RemoveParticipant(participantID); err != nil {
 		return fmt.Errorf("failed to leave room: %w", err)
+	}
+
+	// Broadcast leave event so other clients update instantly
+	if participant != nil {
+		if err := s.db.BroadcastParticipantEvent(roomID, "leave", participant); err != nil {
+			log.Printf("Failed to broadcast participant leave for %s: %v", participantID, err)
+		}
 	}
 
 	// Check if room is now empty
@@ -134,8 +158,18 @@ func (s *RoomService) LeaveRoom(roomID, participantID string) error {
 
 	// If room is empty, delete it immediately
 	if count == 0 {
+		// Fetch room info before deleting (needed for broadcast)
+		room, roomErr := s.db.GetRoom(roomID)
+
 		if err := s.db.DeleteRoom(roomID); err != nil {
 			return fmt.Errorf("failed to delete empty room: %w", err)
+		}
+
+		// Broadcast room deletion so the lobby updates in real-time
+		if roomErr == nil {
+			if err := s.db.BroadcastRoomEvent("deleted", room); err != nil {
+				log.Printf("Failed to broadcast room deleted for %s: %v", roomID, err)
+			}
 		}
 	}
 

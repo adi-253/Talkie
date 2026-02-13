@@ -1,6 +1,7 @@
 package services
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -84,7 +85,11 @@ func (s *MessageService) GetMessages(roomID string, afterTime time.Time) []Messa
 func (s *MessageService) DeleteRoomMessages(roomID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	count := len(s.messages[roomID])
 	delete(s.messages, roomID)
+	if count > 0 {
+		log.Printf("[Message] Deleted %d messages for room %s", count, roomID)
+	}
 }
 
 // GetMessageCount returns the number of messages in a room (for debugging)

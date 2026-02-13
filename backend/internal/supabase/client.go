@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -154,6 +155,26 @@ func (c *Client) GetParticipants(roomID string) ([]models.Participant, error) {
 	return participants, nil
 }
 
+// GetParticipant retrieves a single participant by ID.
+func (c *Client) GetParticipant(participantID string) (*models.Participant, error) {
+	endpoint := fmt.Sprintf("participants?id=eq.%s&select=*", participantID)
+	respBody, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var participants []models.Participant
+	if err := json.Unmarshal(respBody, &participants); err != nil {
+		return nil, fmt.Errorf("failed to parse participant: %w", err)
+	}
+
+	if len(participants) == 0 {
+		return nil, fmt.Errorf("participant not found: %s", participantID)
+	}
+
+	return &participants[0], nil
+}
+
 // RemoveParticipant deletes a participant from the database.
 func (c *Client) RemoveParticipant(participantID string) error {
 	endpoint := fmt.Sprintf("participants?id=eq.%s", participantID)
@@ -194,6 +215,110 @@ func (c *Client) UpdateParticipantActivity(participantID string) error {
 	endpoint := fmt.Sprintf("participants?id=eq.%s", participantID)
 	_, err := c.doRequest("PATCH", endpoint, data)
 	return err
+}
+
+// BroadcastParticipantEvent sends a Supabase Realtime Broadcast event to notify
+// connected clients about a participant joining or leaving.
+// This uses the Supabase Realtime REST API so no WebSocket connection is needed.
+func (c *Client) BroadcastParticipantEvent(roomID string, action string, participant *models.Participant) error {
+	payload := map[string]interface{}{
+		"messages": []map[string]interface{}{
+			{
+				"topic": fmt.Sprintf("room:%s", roomID),
+				"event": "participant",
+				"payload": map[string]interface{}{
+					"action": action,
+					"participant": map[string]interface{}{
+						"id":       participant.ID,
+						"room_id":  participant.RoomID,
+						"username": participant.Username,
+						"avatar":   participant.Avatar,
+					},
+				},
+			},
+		},
+	}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal broadcast payload: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/realtime/v1/api/broadcast", c.baseURL)
+	log.Printf("[Broadcast] Participant %s in room:%s (user: %s)", action, roomID, participant.Username)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create broadcast request: %w", err)
+	}
+
+	req.Header.Set("apikey", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("broadcast request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		log.Printf("[Broadcast] Participant event failed: status=%d body=%s", resp.StatusCode, string(body))
+		return fmt.Errorf("broadcast error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// BroadcastRoomEvent sends a Supabase Realtime Broadcast event to notify
+// connected clients about a room being created or deleted.
+// This broadcasts on a global "rooms:lobby" channel so the Home page can update in real-time.
+func (c *Client) BroadcastRoomEvent(action string, room *models.Room) error {
+	payload := map[string]interface{}{
+		"messages": []map[string]interface{}{
+			{
+				"topic": "rooms:lobby",
+				"event": "room",
+				"payload": map[string]interface{}{
+					"action": action,
+					"room": map[string]interface{}{
+						"id":   room.ID,
+						"name": room.Name,
+					},
+				},
+			},
+		},
+	}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal room broadcast payload: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/realtime/v1/api/broadcast", c.baseURL)
+	log.Printf("[Broadcast] Room %s: %s", action, room.ID)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create room broadcast request: %w", err)
+	}
+
+	req.Header.Set("apikey", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("room broadcast request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		log.Printf("[Broadcast] Room event failed: status=%d body=%s", resp.StatusCode, string(body))
+		return fmt.Errorf("room broadcast error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }
 
 // GetInactiveParticipants returns participants that haven't been active since the given threshold.

@@ -32,7 +32,8 @@ export function ChatRoom() {
     isLoading,
     error,
     joinRoom,
-    leaveRoom
+    leaveRoom,
+    updateParticipants
   } = useRoom(roomId);
 
   // Encryption
@@ -89,11 +90,13 @@ export function ChatRoom() {
     }
   }, []);
 
-  // Handle participant update
+  // Handle participant update from backend broadcast
   const handleParticipantUpdate = useCallback((payload) => {
-    console.log('[ChatRoom] Participant update:', payload);
-    // Room hook handles participant updates via its own polling/state
-  }, []);
+    console.log('[ChatRoom] Participant update:', payload.action, payload.participant?.username);
+    if (payload.action && payload.participant) {
+      updateParticipants(payload.action, payload.participant);
+    }
+  }, [updateParticipants]);
 
   // Connect to Supabase Realtime
   const {
@@ -164,12 +167,7 @@ export function ChatRoom() {
       setUsername(newUsername);
       setAvatar(newAvatar);
       setActiveRoom(roomId);
-      
-      // Broadcast that we joined
-      sendParticipantUpdate('join', {
-        username: newUsername,
-        avatar: newAvatar
-      });
+      // Backend broadcasts the join event after adding to DB
     } catch (err) {
       console.error('Failed to join:', err);
     } finally {
@@ -247,7 +245,7 @@ export function ChatRoom() {
   // Handle leaving
   const handleLeave = async () => {
     clearActiveRoom();
-    sendParticipantUpdate('leave', { username, avatar });
+    // Backend broadcasts the leave event after removing from DB
     await leaveRoom();
     navigate('/');
   };

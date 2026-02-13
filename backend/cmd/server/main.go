@@ -66,6 +66,11 @@ func main() {
 		MaxAge:           300,
 	}))
 
+	// TODO: Add rate limiting middleware to prevent DoS/spam attacks.
+	// Recommended approach: IP-based token bucket with two tiers:
+	//   - Global: ~100 requests/min per IP (all endpoints)
+	//   - Strict: ~20 requests/min per IP (POST /api/rooms, POST /api/rooms/{id}/messages)
+
 	// Health check endpoint
 	r.Get("/health", handlers.HealthCheck)
 

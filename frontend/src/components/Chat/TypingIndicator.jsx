@@ -12,11 +12,13 @@ export function TypingIndicator({ typingUsers }) {
     return null;
   }
 
+  const getName = (user) => typeof user === 'string' ? user : user.username;
+
   const formatTypingText = () => {
     if (typingUsers.length === 1) {
-      return `${typingUsers[0]} is typing`;
+      return `${getName(typingUsers[0])} is typing`;
     } else if (typingUsers.length === 2) {
-      return `${typingUsers[0]} and ${typingUsers[1]} are typing`;
+      return `${getName(typingUsers[0])} and ${getName(typingUsers[1])} are typing`;
     } else {
       return 'Several people are typing';
     }

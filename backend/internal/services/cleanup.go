@@ -33,6 +33,9 @@ func NewCleanupService(db *supabase.Client, interval, timeout time.Duration) *Cl
 func (s *CleanupService) Start() {
 	log.Printf("Cleanup service started (interval: %v, timeout: %v)", s.interval, s.timeout)
 
+	// Run cleanup immediately on startup to purge any stale data from downtime
+	s.cleanup()
+
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
@@ -86,6 +89,10 @@ func (s *CleanupService) cleanupParticipants(threshold time.Time) {
 			log.Printf("Failed to remove participant %s: %v", p.ID, err)
 		} else {
 			log.Printf("Removed inactive participant: %s (%s)", p.ID, p.Username)
+			// Broadcast the leave event so other clients update instantly
+			if err := s.db.BroadcastParticipantEvent(p.RoomID, "leave", &p); err != nil {
+				log.Printf("Failed to broadcast participant leave for %s: %v", p.ID, err)
+			}
 			roomsToCheck[p.RoomID] = true
 		}
 	}
@@ -98,10 +105,19 @@ func (s *CleanupService) cleanupParticipants(threshold time.Time) {
 			continue
 		}
 		if count == 0 {
+			// Fetch room info before deleting (needed for broadcast)
+			room, roomErr := s.db.GetRoom(roomID)
+
 			if err := s.db.DeleteRoom(roomID); err != nil {
 				log.Printf("Failed to delete empty room %s: %v", roomID, err)
 			} else {
 				log.Printf("Deleted room %s (last participant removed)", roomID)
+				// Broadcast room deletion so the lobby updates in real-time
+				if roomErr == nil {
+					if err := s.db.BroadcastRoomEvent("deleted", room); err != nil {
+						log.Printf("Failed to broadcast room deleted for %s: %v", roomID, err)
+					}
+				}
 			}
 		}
 	}
@@ -126,6 +142,10 @@ func (s *CleanupService) cleanupRooms(threshold time.Time) {
 			log.Printf("Failed to delete room %s: %v", room.ID, err)
 		} else {
 			log.Printf("Deleted inactive room: %s", room.ID)
+			// Broadcast room deletion so the lobby updates in real-time
+			if err := s.db.BroadcastRoomEvent("deleted", &room); err != nil {
+				log.Printf("Failed to broadcast room deleted for %s: %v", room.ID, err)
+			}
 		}
 	}
 }
