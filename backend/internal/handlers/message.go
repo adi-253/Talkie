@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -42,6 +43,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := h.messageService.SendMessage(roomID, req)
+	log.Printf("[Message] Stored message %s in room %s from participant %s", msg.ID, roomID, req.ParticipantID)
 	writeJSON(w, http.StatusCreated, msg)
 }
 

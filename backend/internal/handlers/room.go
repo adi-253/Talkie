@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/adi-253/Talkie/backend/internal/models"
@@ -31,9 +32,12 @@ func (h *RoomHandler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	room, err := h.roomService.CreateRoom(req.Name)
 	if err != nil {
+		log.Printf("[Room] Failed to create room: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("[Room] Created room %s (%s)", room.ID, room.Name)
 
 	response := models.CreateRoomResponse{
 		RoomID: room.ID,
@@ -64,6 +68,7 @@ func (h *RoomHandler) GetRoom(w http.ResponseWriter, r *http.Request) {
 
 	room, participants, err := h.roomService.GetRoom(roomID)
 	if err != nil {
+		log.Printf("[Room] Room %s not found: %v", roomID, err)
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
@@ -98,9 +103,12 @@ func (h *RoomHandler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 
 	participant, room, participants, err := h.roomService.JoinRoom(roomID, req.Username, req.Avatar)
 	if err != nil {
+		log.Printf("[Room] Failed to join room %s for user %s: %v", roomID, req.Username, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("[Room] User %s joined room %s (participant: %s)", req.Username, roomID, participant.ID)
 
 	response := models.JoinRoomResponse{
 		ParticipantID: participant.ID,
@@ -132,10 +140,12 @@ func (h *RoomHandler) LeaveRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.roomService.LeaveRoom(roomID, req.ParticipantID); err != nil {
+		log.Printf("[Room] Failed to leave room %s for participant %s: %v", roomID, req.ParticipantID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("[Room] Participant %s left room %s", req.ParticipantID, roomID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -155,6 +165,7 @@ func (h *RoomHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 
 	if err := h.roomService.UpdateHeartbeat(roomID, req.ParticipantID); err != nil {
+		log.Printf("[Room] Heartbeat failed for room %s participant %s: %v", roomID, req.ParticipantID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

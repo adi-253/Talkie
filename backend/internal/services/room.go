@@ -57,6 +57,11 @@ func (s *RoomService) CreateRoom(name string) (*models.Room, error) {
 		return nil, fmt.Errorf("failed to create room: %w", err)
 	}
 
+	// Broadcast room creation so the lobby updates in real-time
+	if err := s.db.BroadcastRoomEvent("created", room); err != nil {
+		log.Printf("Failed to broadcast room created for %s: %v", room.ID, err)
+	}
+
 	return room, nil
 }
 
@@ -112,7 +117,7 @@ func (s *RoomService) JoinRoom(roomID, username, avatar string) (*models.Partici
 	// Update room activity
 	if err := s.db.UpdateRoomActivity(roomID); err != nil {
 		// Non-fatal error, log but continue
-		fmt.Printf("Warning: failed to update room activity: %v\n", err)
+		log.Printf("[Room] Warning: failed to update room activity for %s: %v", roomID, err)
 	}
 
 	// Get updated participant list
@@ -153,8 +158,18 @@ func (s *RoomService) LeaveRoom(roomID, participantID string) error {
 
 	// If room is empty, delete it immediately
 	if count == 0 {
+		// Fetch room info before deleting (needed for broadcast)
+		room, roomErr := s.db.GetRoom(roomID)
+
 		if err := s.db.DeleteRoom(roomID); err != nil {
 			return fmt.Errorf("failed to delete empty room: %w", err)
+		}
+
+		// Broadcast room deletion so the lobby updates in real-time
+		if roomErr == nil {
+			if err := s.db.BroadcastRoomEvent("deleted", room); err != nil {
+				log.Printf("Failed to broadcast room deleted for %s: %v", roomID, err)
+			}
 		}
 	}
 
