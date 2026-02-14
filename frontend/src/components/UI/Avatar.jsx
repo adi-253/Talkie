@@ -1,27 +1,52 @@
 /**
  * Avatar Component
  * 
- * Displays a user avatar with customizable colors and animated presence.
+ * Displays a DiceBear animal-style avatar. Uses the "thumbs" style
+ * for fun, unique creature avatars. Each avatar ID maps to a specific
+ * seed that generates a consistent avatar.
  */
 
+import { useMemo } from 'react';
+import { createAvatar } from '@dicebear/core';
+import { thumbs } from '@dicebear/collection';
 import { motion } from 'framer-motion';
 import './Avatar.css';
 
-// Predefined avatar colors for selection
-export const AVATAR_COLORS = [
-  { id: 'purple', bg: '#8b5cf6', text: '#fff' },
-  { id: 'blue', bg: '#3b82f6', text: '#fff' },
-  { id: 'green', bg: '#10b981', text: '#fff' },
-  { id: 'orange', bg: '#f97316', text: '#fff' },
-  { id: 'pink', bg: '#ec4899', text: '#fff' },
-  { id: 'teal', bg: '#14b8a6', text: '#fff' },
-  { id: 'red', bg: '#ef4444', text: '#fff' },
-  { id: 'yellow', bg: '#eab308', text: '#000' },
+// Predefined avatar options — each seed produces a unique creature
+export const AVATAR_OPTIONS = [
+  { id: 'fox', seed: 'Felix' },
+  { id: 'bear', seed: 'Aneka' },
+  { id: 'owl', seed: 'Midnight' },
+  { id: 'cat', seed: 'Whiskers' },
+  { id: 'dog', seed: 'Buddy' },
+  { id: 'panda', seed: 'Bamboo' },
+  { id: 'bunny', seed: 'Clover' },
+  { id: 'wolf', seed: 'Shadow' },
+  { id: 'koala', seed: 'Eucalyptus' },
+  { id: 'penguin', seed: 'Waddle' },
+  { id: 'lion', seed: 'Roary' },
+  { id: 'frog', seed: 'Leap' },
 ];
 
+function generateAvatarSvg(seed, size = 40) {
+  const avatar = createAvatar(thumbs, {
+    seed: seed,
+    size: size,
+    radius: 50,
+  });
+  return avatar.toDataUri();
+}
+
 export function Avatar({ username, color, size = 'md', showOnline = false }) {
-  const avatarColor = AVATAR_COLORS.find(c => c.id === color) || AVATAR_COLORS[0];
-  const initial = username ? username.charAt(0).toUpperCase() : '?';
+  // `color` is actually the avatar ID (e.g. 'fox', 'bear')
+  const avatarOption = AVATAR_OPTIONS.find(a => a.id === color);
+  // Fall back to using the username as seed if no matching option
+  const seed = avatarOption ? avatarOption.seed : (username || 'default');
+
+  const sizeMap = { sm: 32, md: 40, lg: 56 };
+  const px = sizeMap[size] || 40;
+
+  const dataUri = useMemo(() => generateAvatarSvg(seed, px), [seed, px]);
 
   const sizeClasses = {
     sm: 'avatar--sm',
@@ -32,12 +57,17 @@ export function Avatar({ username, color, size = 'md', showOnline = false }) {
   return (
     <motion.div
       className={`avatar ${sizeClasses[size]}`}
-      style={{ backgroundColor: avatarColor.bg, color: avatarColor.text }}
       initial={{ scale: 0 }}
       animate={{ scale: 1 }}
       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
     >
-      {initial}
+      <img
+        className="avatar__img"
+        src={dataUri}
+        alt={username || 'avatar'}
+        width={px}
+        height={px}
+      />
       {showOnline && <span className="avatar__online-indicator" />}
     </motion.div>
   );
@@ -46,16 +76,22 @@ export function Avatar({ username, color, size = 'md', showOnline = false }) {
 export function AvatarPicker({ selected, onSelect }) {
   return (
     <div className="avatar-picker">
-      {AVATAR_COLORS.map((color) => (
-        <motion.button
-          key={color.id}
-          className={`avatar-picker__option ${selected === color.id ? 'avatar-picker__option--selected' : ''}`}
-          style={{ backgroundColor: color.bg }}
-          onClick={() => onSelect(color.id)}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.95 }}
-        />
-      ))}
+      {AVATAR_OPTIONS.map((option) => {
+        const dataUri = generateAvatarSvg(option.seed, 44);
+        return (
+          <motion.button
+            key={option.id}
+            className={`avatar-picker__option ${selected === option.id ? 'avatar-picker__option--selected' : ''}`}
+            onClick={() => onSelect(option.id)}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+            type="button"
+            title={option.id}
+          >
+            <img src={dataUri} alt={option.id} width={44} height={44} />
+          </motion.button>
+        );
+      })}
     </div>
   );
 }

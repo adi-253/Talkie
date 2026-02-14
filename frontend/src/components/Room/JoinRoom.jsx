@@ -6,12 +6,12 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Avatar, AvatarPicker, AVATAR_COLORS } from '../UI/Avatar';
+import { Avatar, AvatarPicker, AVATAR_OPTIONS } from '../UI/Avatar';
 import './JoinRoom.css';
 
 export function JoinRoom({ onJoin, isLoading }) {
   const [username, setUsername] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_COLORS[0].id);
+  const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_OPTIONS[0].id);
 
   const handleSubmit = (e) => {
     e.preventDefault();
