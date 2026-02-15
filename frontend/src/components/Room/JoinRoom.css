@@ -7,6 +7,12 @@
   background: var(--bg-primary);
 }
 
+@media (max-width: 480px) {
+  .join-room {
+    padding: 16px;
+  }
+}
+
 .join-room__card {
   background: var(--bg-secondary);
   border-radius: 24px;
@@ -14,6 +20,13 @@
   width: 100%;
   max-width: 400px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+@media (max-width: 480px) {
+  .join-room__card {
+    padding: 24px;
+    border-radius: 20px;
+  }
 }
 
 .join-room__header {

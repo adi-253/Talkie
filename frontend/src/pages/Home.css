@@ -8,6 +8,12 @@
   transition: background 0.3s, color 0.3s;
 }
 
+@media (max-width: 480px) {
+  .home {
+    padding: 20px 16px;
+  }
+}
+
 .home__header {
   text-align: center;
   margin-bottom: 48px;
@@ -274,5 +280,17 @@
     width: 52px;
     height: 52px;
     font-size: 26px;
+  }
+
+  .home__header {
+    margin-bottom: 32px;
+  }
+
+  .home__title {
+    font-size: 28px;
+  }
+
+  .home__room-item {
+    padding: 12px;
   }
 }

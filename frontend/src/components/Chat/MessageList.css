@@ -7,6 +7,12 @@
   gap: 4px;
 }
 
+@media (max-width: 768px) {
+  .message-list {
+    padding: 12px 0;
+  }
+}
+
 .message-list::-webkit-scrollbar {
   width: 6px;
 }
